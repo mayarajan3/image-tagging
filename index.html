@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Point Selector</title>
+  <style>
+    .canvas-container {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: 500px;
+      cursor: crosshair;
+      border: 1px solid black;
+    }
+
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    select, button {
+      margin: 10px;
+      padding: 10px;
+    }
+
+    input[type="file"] {
+      padding: 10px;
+    }
+
+    pre {
+      text-align: left;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="controls">
+  <input type="file" accept="image/*" id="imageInput" />
+  
+  <select id="pointType">
+    <option value="connection">Connection Point</option>
+    <option value="receiving">Receiving Point</option>
+  </select>
+</div>
+
+<div class="canvas-container">
+  <canvas id="imageCanvas" style="display: none;"></canvas>
+</div>
+
+<div class="controls">
+  <button id="downloadButton" style="display: none;">Download JSON</button>
+</div>
+
+<pre id="jsonOutput"></pre>
+
+<script>
+  let imageName = "";
+  let canvas = document.getElementById('imageCanvas');
+  let ctx = canvas.getContext('2d');
+  let pointTypeSelector = document.getElementById('pointType');
+  let jsonData = {}; // Stores data for all images
+  let uploadedImage = null;
+  const dotRadius = 5; // Radius of the dots
+
+  document.getElementById('imageInput').addEventListener('change', handleImageUpload);
+  document.getElementById('downloadButton').addEventListener('click', downloadJson);
+
+  function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (file) {
+      imageName = file.name;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        uploadedImage = new Image();
+        uploadedImage.onload = () => {
+          // Resize canvas to match image dimensions
+          canvas.width = uploadedImage.width;
+          canvas.height = uploadedImage.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+          ctx.drawImage(uploadedImage, 0, 0); // Draw the image on the canvas
+          canvas.style.display = "block"; // Show the canvas
+          document.getElementById('downloadButton').style.display = "block"; // Show download button
+
+          // Check if there are any previously saved points for this image
+          if (jsonData[imageName]) {
+            redraw(); // Redraw the image and the saved dots
+          }
+        };
+        uploadedImage.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  canvas.addEventListener('click', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left; // X-coordinate relative to the image
+    const y = event.clientY - rect.top;  // Y-coordinate relative to the image
+
+    if (!jsonData[imageName]) {
+      jsonData[imageName] = {
+        receiving: [],
+        connection: []
+      };
+    }
+
+    // Check if the click is near an existing dot and remove the dot if so
+    if (!removeDotIfClicked(x, y)) {
+      // If no dot was removed, add a new one
+      const selectedPointType = pointTypeSelector.value;
+      if (selectedPointType === "connection") {
+        jsonData[imageName].connection.push({ x, y });
+      } else if (selectedPointType === "receiving") {
+        jsonData[imageName].receiving.push({ x, y });
+      }
+
+      drawDot(x, y, selectedPointType);
+    }
+
+    // Update JSON display
+    document.getElementById('jsonOutput').textContent = JSON.stringify(jsonData, null, 2);
+  });
+
+  // Function to draw a dot at a given position
+  function drawDot(x, y, selectedPointType) {
+    ctx.beginPath();
+    ctx.arc(x, y, dotRadius, 0, 2 * Math.PI); // Draw a circle with radius 5px
+    ctx.fillStyle = selectedPointType === "connection" ? "blue" : "red"; // Use different colors for different point types
+    ctx.fill();
+  }
+
+  // Function to remove a dot if clicked and return true if a dot was removed
+  function removeDotIfClicked(x, y) {
+    const connectionDots = jsonData[imageName].connection;
+    const receivingDots = jsonData[imageName].receiving;
+    
+    // Check if clicked near any connection point
+    for (let i = 0; i < connectionDots.length; i++) {
+      if (distance(x, y, connectionDots[i].x, connectionDots[i].y) <= dotRadius) {
+        connectionDots.splice(i, 1); // Remove the dot from the array
+        redraw(); // Redraw the canvas with the updated dots
+        return true;
+      }
+    }
+
+    // Check if clicked near any receiving point
+    for (let i = 0; i < receivingDots.length; i++) {
+      if (distance(x, y, receivingDots[i].x, receivingDots[i].y) <= dotRadius) {
+        receivingDots.splice(i, 1); // Remove the dot from the array
+        redraw(); // Redraw the canvas with the updated dots
+        return true;
+      }
+    }
+
+    return false; // No dot was clicked
+  }
+
+  // Function to redraw the canvas and all the dots
+  function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+    ctx.drawImage(uploadedImage, 0, 0); // Redraw the image
+
+    // Redraw all connection dots
+    jsonData[imageName].connection.forEach(({ x, y }) => {
+      drawDot(x, y, "connection");
+    });
+
+    // Redraw all receiving dots
+    jsonData[imageName].receiving.forEach(({ x, y }) => {
+      drawDot(x, y, "receiving");
+    });
+  }
+
+  // Function to calculate distance between two points
+  function distance(x1, y1, x2, y2) {
+    return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+  }
+
+  // Function to download the JSON data as a file
+  function downloadJson() {
+    const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "image_data.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+</script>
+
+</body>
+</html>
