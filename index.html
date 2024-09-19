@@ -13,7 +13,6 @@
 
     canvas {
       max-width: 100%;
-      cursor: crosshair;
       border: 1px solid black;
     }
 
@@ -104,8 +103,8 @@
 
   canvas.addEventListener('click', (event) => {
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left - 1.25; // X-coordinate relative to the image
-    const y = event.clientY - rect.top - 1.15;  // Y-coordinate relative to the image
+    const x = event.clientX - rect.left - 2.5 + 0.7; // X-coordinate relative to the image
+    const y = event.clientY - rect.top - 2.5;  // Y-coordinate relative to the image
 
     if (!jsonData[imageName]) {
       jsonData[imageName] = [];
