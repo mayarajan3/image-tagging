@@ -38,6 +38,31 @@
       word-wrap: break-word;
       margin-top: 20px;
     }
+
+    .upload-container {
+      border: 1px solid black;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .download-container {
+      padding: 10px;
+      border: 1px solid black;
+      border-left: none;
+      width: 220px;
+      height: 121px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .download-container button {
+      height: 40px;
+    }
+
   </style>
 </head>
 <body>
@@ -55,8 +80,24 @@
   <canvas id="imageCanvas" style="display: none;"></canvas>
 </div>
 
-<div class="controls">
-  <button id="downloadButton" style="display: none;">Download JSON</button>
+<div class="controls" style="flex-direction:row; justify-content: center;">
+  <div class="upload-container">
+      <div>
+      <input type="file" accept="application/json" style="width:180px" id="uploadJsonInput" />
+    </div>
+    <div>
+      <label>
+        <input type="checkbox" id="replaceCheckbox"> Replace Existing Data
+      </label>
+    </div>
+    <div>
+      <button id="uploadButton">Upload JSON</button>
+    </div>
+  </div>
+  <div class="download-container">
+  <button  id="downloadButton">Download JSON</button>
+</div>
+  
 </div>
 
 <pre id="jsonOutput"></pre>
@@ -72,6 +113,15 @@
 
   document.getElementById('imageInput').addEventListener('change', handleImageUpload);
   document.getElementById('downloadButton').addEventListener('click', downloadJson);
+  document.getElementById('uploadButton').addEventListener('click', uploadJson);
+
+  window.onload = function () {
+    const storedData = localStorage.getItem('imagePointData');
+    if (storedData) {
+      jsonData = JSON.parse(storedData);
+      document.getElementById('jsonOutput').textContent = JSON.stringify(jsonData, null, 2);
+    }
+  };
 
   function handleImageUpload(event) {
     const file = event.target.files[0];
@@ -110,15 +160,7 @@
       jsonData[imageName] = [];
     }
 
-    // Check if the click is near an existing dot and remove the dot if so
     if (!removeDotIfClicked(x, y)) {
-      // If no dot was removed, add a new one
-      // const selectedPointType = pointTypeSelector.value;
-      // if (selectedPointType === "connection") {
-      //   jsonData[imageName].connection.push({ x, y });
-      // } else if (selectedPointType === "receiving") {
-      //   jsonData[imageName].receiving.push({ x, y });
-      // }
       jsonData[imageName].push({ x, y });
 
       drawDot(x, y);
@@ -126,6 +168,7 @@
 
     // Update JSON display
     document.getElementById('jsonOutput').textContent = JSON.stringify(jsonData, null, 2);
+    saveToLocalStorage();
   });
 
   // Function to draw a dot at a given position
@@ -146,18 +189,10 @@
       if (distance(x, y, dots[i].x, dots[i].y) <= dotRadius) {
         dots.splice(i, 1); // Remove the dot from the array
         redraw(); // Redraw the canvas with the updated dots
+        saveToLocalStorage();
         return true;
       }
     }
-
-    // // Check if clicked near any receiving point
-    // for (let i = 0; i < receivingDots.length; i++) {
-    //   if (distance(x, y, receivingDots[i].x, receivingDots[i].y) <= dotRadius) {
-    //     receivingDots.splice(i, 1); // Remove the dot from the array
-    //     redraw(); // Redraw the canvas with the updated dots
-    //     return true;
-    //   }
-    // }
 
     return false; // No dot was clicked
   }
@@ -168,14 +203,12 @@
     ctx.drawImage(uploadedImage, 0, 0); // Redraw the image
 
     // Redraw all connection dots
-    jsonData[imageName].forEach(({ x, y }) => {
-      drawDot(x, y);
-    });
+    if (jsonData[imageName]) {
+      jsonData[imageName].forEach(({ x, y }) => {
+        drawDot(x, y);
+      });
+    }
 
-    // // Redraw all receiving dots
-    // jsonData[imageName].receiving.forEach(({ x, y }) => {
-    //   drawDot(x, y);
-    // });
   }
 
   // Function to calculate distance between two points
@@ -194,6 +227,53 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function uploadJson() {
+    const fileInput = document.getElementById('uploadJsonInput');
+    const file = fileInput.files[0];
+    
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+
+          const replace = document.getElementById('replaceCheckbox').checked;
+
+          // Replace or merge the uploaded data
+          if (replace) {
+            jsonData = data;
+          } else {
+            // Merge the uploaded data with existing data
+            for (const key in data) {
+              if (data.hasOwnProperty(key)) {
+                if (!jsonData[key]) {
+                  jsonData[key] = data[key];
+                } else {
+                  // Merge points for the same image
+                  jsonData[key] = [...jsonData[key], ...data[key]];
+                }
+              }
+            }
+          }
+
+          // Update the JSON display
+          document.getElementById('jsonOutput').textContent = JSON.stringify(jsonData, null, 2);
+          saveToLocalStorage();
+
+          // If the current image matches the uploaded JSON data, redraw the canvas
+          redraw();
+        } catch (error) {
+          alert('Invalid JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+  }
+
+  function saveToLocalStorage() {
+    localStorage.setItem('imagePointData', JSON.stringify(jsonData));
   }
 </script>
 
